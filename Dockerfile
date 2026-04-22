@@ -24,12 +24,21 @@ ENV NEXT_PUBLIC_WS_URL=$NEXT_PUBLIC_WS_URL
 RUN bun run build
 
 # --- Runtime image ---
-FROM node:22-slim
+FROM python:3.12-slim
 
+# Install Node.js 22 for Claude Code CLI and Next.js
 RUN apt-get update && apt-get install -y --no-install-recommends \
     supervisor \
-    python3 \
-    python3-venv \
+    curl \
+    ca-certificates \
+    gnupg \
+    && mkdir -p /etc/apt/keyrings \
+    && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+       | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg \
+    && echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main" \
+       > /etc/apt/sources.list.d/nodesource.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Claude Code CLI globally via npm
