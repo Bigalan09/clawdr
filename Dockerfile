@@ -4,11 +4,13 @@ FROM python:3.12-slim AS backend-build
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 WORKDIR /app/backend
-COPY backend/pyproject.toml backend/uv.lock* ./
-RUN uv sync --no-dev --no-install-project
+COPY backend/pyproject.toml ./
+RUN uv venv /app/backend/.venv \
+    && uv pip install --python /app/backend/.venv/bin/python hatchling
 
 COPY backend/ ./
-RUN uv sync --no-dev
+RUN uv pip install --python /app/backend/.venv/bin/python --no-deps . \
+    && uv pip install --python /app/backend/.venv/bin/python .
 
 # --- Frontend build stage ---
 FROM oven/bun:1 AS frontend-build
@@ -37,7 +39,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Claude Code CLI globally via npm
-# This is the official distribution method for Linux
 RUN npm install -g @anthropic-ai/claude-code
 
 # Backend: copy the built venv and source
@@ -56,9 +57,6 @@ COPY docker/supervisord.conf /etc/supervisor/conf.d/clawdr.conf
 # Create config and auth directories
 RUN mkdir -p /root/.config/clawdr /root/.claude
 
-# Auth volume: mount the host's ~/.claude here so the container
-# can use existing Claude Code authentication.
-# See README for auth setup instructions.
 VOLUME ["/root/.claude"]
 
 EXPOSE 8000 3000
