@@ -2,7 +2,7 @@
 name = "clawdr"
 version = "0.1.0"
 description = "Web panel for managing Claude Code Remote Control sessions"
-readme = "../README.md"
+readme = {text = "", content-type = "text/plain"}
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115",
