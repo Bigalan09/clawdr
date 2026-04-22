@@ -31,19 +31,16 @@ jobs:
       - name: Install dependencies
         run: uv sync --all-extras --dev
 
-      - name: Install tmux (for contract tests)
-        run: sudo apt-get update && sudo apt-get install -y tmux
-
-      - name: Lint (ruff check)
+      - name: Lint
         run: uv run ruff check .
 
-      - name: Format check (ruff format)
+      - name: Format check
         run: uv run ruff format --check .
 
-      - name: Typecheck (mypy --strict)
+      - name: Typecheck
         run: uv run mypy src
 
-      - name: Test (pytest)
+      - name: Test
         run: uv run pytest -v --cov=clawdr --cov-report=term-missing
 
   frontend:
@@ -55,7 +52,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Bun
+      - name: Set up Bun
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: latest
