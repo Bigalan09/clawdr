@@ -1,17 +1,7 @@
 # --- Backend build stage ---
-FROM python:3.12-slim AS backend
+FROM python:3.12-slim AS backend-build
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    tmux \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install uv
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
-
-# Install Claude Code CLI
-RUN curl -fsSL https://claude.ai/install.sh | sh 2>/dev/null || true
-ENV PATH="/root/.local/bin:$PATH"
 
 WORKDIR /app/backend
 COPY backend/pyproject.toml backend/uv.lock* ./
@@ -36,53 +26,41 @@ ENV NEXT_PUBLIC_WS_URL=$NEXT_PUBLIC_WS_URL
 
 RUN bun run build
 
-# --- Frontend runtime ---
-FROM oven/bun:1-slim AS frontend
+# --- Runtime image ---
+FROM node:22-slim
 
-WORKDIR /app/web
-COPY --from=frontend-build /app/web/.next/standalone ./
-COPY --from=frontend-build /app/web/.next/static ./.next/static
-COPY --from=frontend-build /app/web/public ./public
-
-EXPOSE 3000
-CMD ["bun", "server.js"]
-
-# --- Final combined image (default) ---
-FROM python:3.12-slim
-
+# System deps: tmux for session management, supervisor for process management
 RUN apt-get update && apt-get install -y --no-install-recommends \
     tmux \
-    curl \
     supervisor \
+    python3 \
+    python3-venv \
     && rm -rf /var/lib/apt/lists/*
 
-# Install uv
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+# Install Claude Code CLI globally via npm
+# This is the official distribution method for Linux
+RUN npm install -g @anthropic-ai/claude-code
 
-# Install bun
-RUN curl -fsSL https://bun.sh/install | bash
-ENV PATH="/root/.bun/bin:$PATH"
-
-# Install Claude Code CLI
-RUN curl -fsSL https://claude.ai/install.sh | sh 2>/dev/null || true
-ENV PATH="/root/.local/bin:$PATH"
-
-# Backend
+# Backend: copy the built venv and source
 WORKDIR /app/backend
-COPY --from=backend /app/backend /app/backend
+COPY --from=backend-build /app/backend /app/backend
 
-# Frontend
+# Frontend: copy the built Next.js app
 WORKDIR /app/web
 COPY --from=frontend-build /app/web/.next ./.next
 COPY --from=frontend-build /app/web/node_modules ./node_modules
 COPY --from=frontend-build /app/web/package.json ./
-COPY --from=frontend-build /app/web/public ./public 2>/dev/null || true
 
 # Supervisor config
 COPY docker/supervisord.conf /etc/supervisor/conf.d/clawdr.conf
 
-# Config directory
-RUN mkdir -p /root/.config/clawdr
+# Create config and auth directories
+RUN mkdir -p /root/.config/clawdr /root/.claude
+
+# Auth volume: mount the host's ~/.claude here so the container
+# can use existing Claude Code authentication.
+# See README for auth setup instructions.
+VOLUME ["/root/.claude"]
 
 EXPOSE 8000 3000
 

@@ -1,50 +1,27 @@
 services:
-  backend:
-    build:
-      context: .
-      target: backend
-    command: /app/backend/.venv/bin/uvicorn clawdr.main:app --host 0.0.0.0 --port 8000
-    working_dir: /app/backend
-    ports:
-      - "8000:8000"
-    volumes:
-      - config:/root/.config/clawdr
-      - /var/run/docker.sock:/var/run/docker.sock
-    environment:
-      - CLAWDR_CONFIG=/root/.config/clawdr/config.yaml
-    restart: unless-stopped
-
-  frontend:
-    build:
-      context: .
-      target: frontend-build
-    command: bun run start --port 3000 --hostname 0.0.0.0
-    working_dir: /app/web
-    ports:
-      - "3000:3000"
-    environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8000/api
-      - NEXT_PUBLIC_WS_URL=ws://localhost:8000/ws
-    depends_on:
-      - backend
-    restart: unless-stopped
-
-  # Single-container alternative (both services in one)
   clawdr:
-    build:
-      context: .
+    build: .
     ports:
       - "8000:8000"
       - "3000:3000"
     volumes:
+      # Persist project config across restarts
       - config:/root/.config/clawdr
+      # Mount host's Claude auth so the container can run `claude rc`.
+      # On first run, either:
+      #   1. Mount your existing auth: ~/.claude:/root/.claude
+      #   2. Or run: docker exec -it clawdr claude auth login
+      #      and complete the OAuth flow in your browser
+      #   3. Or set ANTHROPIC_API_KEY for API key auth (Console billing)
+      - ${CLAUDE_AUTH_DIR:-~/.claude}:/root/.claude
+      # Mount project directories so claude rc can access them.
+      # Add your own project paths here.
+      - ${HOME}:/host-home:ro
     environment:
       - CLAWDR_CONFIG=/root/.config/clawdr/config.yaml
-      - NEXT_PUBLIC_API_URL=http://localhost:8000/api
-      - NEXT_PUBLIC_WS_URL=ws://localhost:8000/ws
+      # Set this for API key auth instead of OAuth:
+      # - ANTHROPIC_API_KEY=sk-ant-...
     restart: unless-stopped
-    profiles:
-      - combined
 
 volumes:
   config:
