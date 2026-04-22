@@ -60,7 +60,9 @@ COPY docker/supervisord.conf /etc/supervisor/conf.d/clawdr.conf
 RUN mkdir -p /root/.config/clawdr /root/.claude
 
 VOLUME ["/root/.claude"]
-EXPOSE 8000 3000
+
+ENV BACKEND_PORT=8000
+ENV FRONTEND_PORT=3000
 
 WORKDIR /app
 CMD ["supervisord", "-n", "-c", "/etc/supervisor/conf.d/clawdr.conf"]
