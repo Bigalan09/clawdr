@@ -64,5 +64,7 @@ VOLUME ["/root/.claude"]
 ENV BACKEND_PORT=8000
 ENV FRONTEND_PORT=3000
 
+EXPOSE 8000 3000 10200 10300
+
 WORKDIR /app
 CMD ["supervisord", "-n", "-c", "/etc/supervisor/conf.d/clawdr.conf"]

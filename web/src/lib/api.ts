@@ -113,10 +113,11 @@ export interface BrowseResponse {
 }
 
 export async function browsePath(
-  path: string = "~",
+  path: string = "",
 ): Promise<BrowseResponse> {
+  const params = path ? `?path=${encodeURIComponent(path)}` : "";
   const res = await fetch(
-    `${API_BASE}/browse?path=${encodeURIComponent(path)}`,
+    `${API_BASE}/browse${params}`,
   );
   if (!res.ok) {
     const detail = await res.json().catch(() => ({ detail: "Unknown error" }));

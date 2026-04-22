@@ -19,6 +19,7 @@ services:
       - ${HOME}:/host-home:ro
     environment:
       - CLAWDR_CONFIG=/root/.config/clawdr/config.yaml
+      - CLAWDR_BROWSE_ROOT=/host-home
       # Set this for API key auth instead of OAuth:
       # - ANTHROPIC_API_KEY=sk-ant-...
     restart: unless-stopped

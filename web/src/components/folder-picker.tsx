@@ -31,7 +31,7 @@ export function FolderPicker({
 
   useEffect(() => {
     if (open && !browse) {
-      load(value || "~");
+      load(value || "");
     }
   }, [open, browse, load, value]);
 
