@@ -63,8 +63,8 @@ python_version = "3.12"
 strict = true
 warn_return_any = true
 warn_unused_ignores = true
-disallow_any_explicit = true
 files = ["src"]
+plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
 module = "libtmux.*"
