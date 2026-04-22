@@ -91,7 +91,7 @@ export function ProjectCard({ project }: { project: ProjectView }) {
 
       {actionError && <p className="text-xs text-red-400">{actionError}</p>}
 
-      {/* Permission mode selector — only shown when stopped */}
+      {/* Permission mode selector - only shown when stopped */}
       {!isActive && (
         <select
           value={startPerm}

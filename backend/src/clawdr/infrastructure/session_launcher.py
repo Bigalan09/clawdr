@@ -1,7 +1,7 @@
 """Process-based session launcher for Claude Code RC.
 
 Spawns `claude rc` as a subprocess, tails its output for the session URL,
-and manages the process lifecycle. Works without tmux — the process runs
+and manages the process lifecycle. Works without tmux; the process runs
 directly under the backend.
 """
 
@@ -133,7 +133,7 @@ async def _watch_process(
     except asyncio.CancelledError:
         return
 
-    # Process exited — check if it was expected
+    # Process exited - check if it was expected
     await proc.wait()
     _processes.pop(project_id, None)
 

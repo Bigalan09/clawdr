@@ -67,7 +67,7 @@ docker compose up -d
 docker exec -it clawdr-clawdr-1 claude auth login
 ```
 
-This opens an OAuth URL — paste it into your browser, complete the flow, and the token is stored in the container's `/root/.claude` volume (persisted across restarts).
+This opens an OAuth URL. Paste it into your browser, complete the flow, and the token is stored in the container's `/root/.claude` volume (persisted across restarts).
 
 #### Option 3: API key auth (Anthropic Console billing)
 
@@ -163,10 +163,10 @@ Next.js 15 frontend (Bun, Tailwind 4)
 
 ## Docs
 
-- [`docs/PRD.md`](./docs/PRD.md) — product requirements
-- [`docs/SPEC.md`](./docs/SPEC.md) — technical specification
-- [`docs/PLAN.md`](./docs/PLAN.md) — phased implementation plan
-- [`docs/CONSTITUTION.md`](./docs/CONSTITUTION.md) — engineering principles
+- [`docs/PRD.md`](./docs/PRD.md) - product requirements
+- [`docs/SPEC.md`](./docs/SPEC.md) - technical specification
+- [`docs/PLAN.md`](./docs/PLAN.md) - phased implementation plan
+- [`docs/CONSTITUTION.md`](./docs/CONSTITUTION.md) - engineering principles
 
 ## License
 
