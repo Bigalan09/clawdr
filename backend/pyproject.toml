@@ -1,0 +1,80 @@
+[project]
+name = "clawdr"
+version = "0.1.0"
+description = "Web panel for managing Claude Code Remote Control sessions"
+readme = "../README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "libtmux>=0.39",
+    "structlog>=24.4",
+    "ruamel.yaml>=0.18",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "websockets>=13.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "pytest-cov>=6.0",
+    "mypy>=1.13",
+    "ruff>=0.7",
+    "httpx>=0.27",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/clawdr"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E", "F", "W",      # pycodestyle, pyflakes
+    "I",                # isort
+    "N",                # pep8-naming
+    "UP",               # pyupgrade
+    "B",                # bugbear
+    "C4",               # comprehensions
+    "SIM",              # simplify
+    "RUF",              # ruff specific
+    "S",                # bandit (security)
+    "ASYNC",            # async lints
+    "TCH",              # type checking imports
+]
+ignore = [
+    "S101",             # assert allowed in tests
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["S101", "S105", "S106"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_return_any = true
+warn_unused_ignores = true
+disallow_any_explicit = true
+files = ["src"]
+
+[[tool.mypy.overrides]]
+module = "libtmux.*"
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+addopts = "-ra --strict-markers"
+markers = [
+    "integration: requires tmux",
+    "slow: slow tests",
+]

@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# Node / Bun
+node_modules/
+.next/
+out/
+bun.lockb
+.turbo/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Runtime
+/run/
+*.fifo
+*.log
+
+# Local config
+.env
+.env.local
+config.local.yaml
