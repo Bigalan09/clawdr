@@ -84,9 +84,7 @@ class Session:
     last_output_at: datetime | None = None
     permission_mode: PermissionMode = PermissionMode.DEFAULT
 
-    def start(
-        self, now: datetime, permission_mode: PermissionMode | None = None
-    ) -> None:
+    def start(self, now: datetime, permission_mode: PermissionMode | None = None) -> None:
         """Transition to STARTING."""
         if self.state not in (SessionState.STOPPED, SessionState.CRASHED):
             msg = f"Cannot start session in state {self.state.value}"

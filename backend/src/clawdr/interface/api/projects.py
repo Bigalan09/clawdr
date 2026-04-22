@@ -71,11 +71,7 @@ async def list_projects() -> ProjectListResponse:
                 path=str(p.path),
                 source=p.source,
                 session_state=session.state.value,
-                started_at=(
-                    session.started_at.isoformat()
-                    if session.started_at
-                    else None
-                ),
+                started_at=(session.started_at.isoformat() if session.started_at else None),
                 permission_mode=p.permission_mode.value,
             )
         )
@@ -169,9 +165,7 @@ async def stop_session(project_id: str) -> SessionActionResponse:
     )
 
 
-@router.get(
-    "/{project_id}/session/url", response_model=SessionUrlResponse
-)
+@router.get("/{project_id}/session/url", response_model=SessionUrlResponse)
 async def get_session_url(project_id: str) -> SessionUrlResponse:
     """Get the session URL for a running project."""
     from clawdr.domain.models import ProjectId

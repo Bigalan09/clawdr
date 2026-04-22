@@ -44,9 +44,7 @@ def _list_dirs(path: str) -> BrowseResponse:
         if child.name.startswith("."):
             continue
         if child.is_dir():
-            entries.append(
-                DirEntry(name=child.name, path=str(child), is_dir=True)
-            )
+            entries.append(DirEntry(name=child.name, path=str(child), is_dir=True))
 
     return BrowseResponse(current=str(target), parent=parent, entries=entries)
 
