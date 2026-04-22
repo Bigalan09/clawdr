@@ -170,4 +170,4 @@ Next.js 15 frontend (Bun, Tailwind 4)
 
 ## License
 
-Personal project, not licensed for redistribution.
+MIT License. See [LICENSE](./LICENSE) for details.
