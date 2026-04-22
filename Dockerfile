@@ -29,9 +29,8 @@ RUN bun run build
 # --- Runtime image ---
 FROM node:22-slim
 
-# System deps: tmux for session management, supervisor for process management
+# System deps: supervisor for process management
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    tmux \
     supervisor \
     python3 \
     python3-venv \

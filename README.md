@@ -98,7 +98,6 @@ Then use `/projects/my-project` as the path in the UI.
 | Python 3.12 | Base image | FastAPI backend |
 | Node.js 22 | Base image | Claude Code CLI runtime, Next.js |
 | Claude Code CLI | `npm install -g @anthropic-ai/claude-code` | Runs `claude rc` sessions |
-| tmux | `apt-get install tmux` | Session management (future use) |
 | supervisor | `apt-get install supervisor` | Runs backend + frontend |
 
 ## Configuration
