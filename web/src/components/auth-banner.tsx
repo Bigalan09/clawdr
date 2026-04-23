@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { AuthStatus } from "@/lib/api";
 import { fetchAuthStatus } from "@/lib/api";
 
-const DOCKER_CMD = "docker exec -it clawdr claude auth login";
+const DOCKER_CMD = "docker exec -it clawdr claude";
 
 export function AuthGate({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = useState<AuthStatus | null>(null);
@@ -90,10 +90,15 @@ function LoginInstructions() {
             </button>
           </div>
 
-          <p className="mt-4 text-xs text-text-muted">
-            This will open an interactive login session inside the container.
-            Follow the prompts to complete OAuth sign-in. This page will
-            automatically detect when you&apos;re logged in.
+          <ol className="mt-4 space-y-1.5 text-xs text-text-muted">
+            <li>1. Run the command above in your terminal</li>
+            <li>2. Accept the trust prompt, then type <code className="rounded bg-surface-base px-1 py-0.5 font-mono text-text-secondary">/login</code></li>
+            <li>3. Open the sign-in URL in your browser and complete sign-in</li>
+            <li>4. Paste the code back into the terminal when prompted</li>
+            <li>5. Type <code className="rounded bg-surface-base px-1 py-0.5 font-mono text-text-secondary">/exit</code> to close the session</li>
+          </ol>
+          <p className="mt-3 text-xs text-text-muted">
+            This page will automatically detect when you&apos;re logged in.
           </p>
         </div>
       </div>
