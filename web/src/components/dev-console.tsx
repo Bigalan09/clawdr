@@ -34,6 +34,16 @@ export function DevConsole() {
     }
   }, [logs]);
 
+  function copyLogs() {
+    const text = logs
+      .map(
+        (e) =>
+          `${new Date(e.ts).toLocaleTimeString()} [${e.level}] ${e.msg}`,
+      )
+      .join("\n");
+    navigator.clipboard.writeText(text);
+  }
+
   return (
     <>
       <button
@@ -58,12 +68,22 @@ export function DevConsole() {
       </button>
 
       {open && (
-        <div className="fixed bottom-0 right-0 z-40 flex h-72 w-full flex-col border-t border-border bg-surface-base sm:bottom-4 sm:right-4 sm:h-80 sm:w-[480px] sm:rounded-xl sm:border">
-          <div className="flex items-center justify-between border-b border-border px-3 py-2">
+        <div className="fixed bottom-0 right-0 z-40 flex w-full flex-col border-t border-border bg-surface-base sm:bottom-4 sm:right-4 sm:w-[520px] sm:rounded-xl sm:border"
+          style={{ height: "320px" }}
+        >
+          <div className="flex shrink-0 items-center justify-between border-b border-border px-3 py-2">
             <span className="text-xs font-medium text-text-secondary">
               Dev Console
             </span>
             <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={copyLogs}
+                className="text-xs text-text-muted hover:text-text-secondary"
+                title="Copy all logs"
+              >
+                Copy
+              </button>
               <button
                 type="button"
                 onClick={() => {
@@ -85,7 +105,7 @@ export function DevConsole() {
           </div>
           <div
             ref={scrollRef}
-            className="flex-1 overflow-y-auto p-2 font-mono text-xs"
+            className="min-h-0 flex-1 overflow-y-auto p-2 font-mono text-xs scrollbar-thin"
           >
             {logs.length === 0 && (
               <p className="py-4 text-center text-text-muted">
@@ -93,17 +113,21 @@ export function DevConsole() {
               </p>
             )}
             {logs.map((entry, i) => (
-              <div key={`${entry.ts}-${i}`} className="flex gap-2 py-0.5">
+              <div
+                key={`${entry.ts}-${i}`}
+                className="flex gap-2 py-0.5"
+                style={{ overflowWrap: "anywhere" }}
+              >
                 <span className="shrink-0 text-text-muted">
                   {new Date(entry.ts).toLocaleTimeString()}
                 </span>
                 <span
                   className={
                     entry.level === "error"
-                      ? "text-red-400"
+                      ? "break-all text-red-400"
                       : entry.level === "warning"
-                        ? "text-yellow-400"
-                        : "text-text-secondary"
+                        ? "break-all text-yellow-400"
+                        : "break-all text-text-secondary"
                   }
                 >
                   {entry.msg}

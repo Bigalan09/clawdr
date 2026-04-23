@@ -154,6 +154,9 @@ function LoginCard({ onAuthenticated }: { onAuthenticated: () => void }) {
               </div>
             </div>
 
+            <p className="text-center text-xs text-text-muted">
+              Do not reload the page between steps.
+            </p>
             <button
               type="button"
               onClick={() => {
