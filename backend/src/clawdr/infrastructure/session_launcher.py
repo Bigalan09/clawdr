@@ -22,6 +22,11 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
+class LaunchError(RuntimeError):
+    """Raised when the claude rc subprocess fails to start."""
+
+
 _URL_PATTERN = re.compile(r"https://claude\.ai/code/session_[a-zA-Z0-9_\-]+")
 _ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
 
@@ -59,12 +64,23 @@ async def launch_session(
     cmd = _build_command(project_path, permission_mode, project_name)
     logger.info("Launching session for %s: %s", key, " ".join(cmd))
 
-    proc = await asyncio.create_subprocess_exec(
-        *cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.STDOUT,
-        cwd=project_path,
-    )
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+            cwd=project_path,
+        )
+    except (FileNotFoundError, PermissionError, OSError) as exc:
+        logger.error("Failed to launch session for %s: %s", key, exc)
+        session = await session_store.get(project_id)
+        if session.state == SessionState.STARTING:
+            session.crash()
+            await session_store.set(session)
+            await event_bus.publish(SessionStateChanged(project_id=key, state=session.state.value))
+        msg = str(exc)
+        raise LaunchError(msg) from exc
+
     _processes[key] = proc
 
     # Start a watcher task that reads output and manages state

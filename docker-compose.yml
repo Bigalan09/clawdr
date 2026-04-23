@@ -16,7 +16,7 @@ services:
       - ${CLAUDE_AUTH_DIR:-~/.claude}:/root/.claude
       # Mount project directories so claude rc can access them.
       # Add your own project paths here.
-      - ${HOME}:/host-home:ro
+      - ${HOME}:/host-home
     environment:
       - CLAWDR_CONFIG=/root/.config/clawdr/config.yaml
       - CLAWDR_BROWSE_ROOT=/host-home
