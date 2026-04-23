@@ -169,6 +169,19 @@ export async function submitAuthCode(code: string): Promise<AuthCallbackResponse
   return res.json();
 }
 
+export interface LogEntry {
+  ts: string;
+  level: string;
+  msg: string;
+}
+
+export async function fetchAuthLogs(since: string = ""): Promise<LogEntry[]> {
+  const params = since ? `?since=${encodeURIComponent(since)}` : "";
+  const res = await fetch(`${API_BASE}/auth/logs${params}`);
+  if (!res.ok) return [];
+  return res.json();
+}
+
 export async function removeProject(projectId: string): Promise<void> {
   const res = await fetch(`${API_BASE}/projects/${projectId}`, {
     method: "DELETE",
