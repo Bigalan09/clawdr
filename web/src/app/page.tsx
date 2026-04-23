@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { AuthBanner } from "@/components/auth-banner";
 import { ConnectionStatus } from "@/components/connection-status";
 import { ProjectGrid } from "@/components/project-grid";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -40,6 +41,7 @@ export default function Page() {
           <ConnectionStatus />
         </div>
       </header>
+      <AuthBanner />
       <ProjectGrid />
     </main>
   );

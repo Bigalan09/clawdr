@@ -126,6 +126,31 @@ export async function browsePath(
   return res.json();
 }
 
+export interface AuthStatus {
+  logged_in: boolean;
+  auth_method: string;
+  email: string | null;
+}
+
+export interface AuthLoginResponse {
+  oauth_url: string;
+}
+
+export async function fetchAuthStatus(): Promise<AuthStatus> {
+  const res = await fetch(`${API_BASE}/auth/status`);
+  if (!res.ok) throw new Error(`Failed to check auth status: ${res.status}`);
+  return res.json();
+}
+
+export async function startAuthLogin(): Promise<AuthLoginResponse> {
+  const res = await fetch(`${API_BASE}/auth/login`, { method: "POST" });
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({ detail: "Unknown error" }));
+    throw new Error(detail.detail ?? `Failed: ${res.status}`);
+  }
+  return res.json();
+}
+
 export async function removeProject(projectId: string): Promise<void> {
   const res = await fetch(`${API_BASE}/projects/${projectId}`, {
     method: "DELETE",
