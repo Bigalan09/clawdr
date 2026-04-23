@@ -14,6 +14,7 @@ services:
       #      and complete the OAuth flow in your browser
       #   3. Or set ANTHROPIC_API_KEY for API key auth (Console billing)
       - ${CLAUDE_AUTH_DIR:-~/.claude}:/root/.claude
+      - ${HOME}/.claude.json:/root/.claude.json
       # Mount project directories so claude rc can access them.
       # Add your own project paths here.
       - ${HOME}:/host-home
