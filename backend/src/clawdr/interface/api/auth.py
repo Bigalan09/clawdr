@@ -172,7 +172,7 @@ async def auth_login() -> AuthLoginResponse:
     _cleanup_login()
     _pty_output = ""
 
-    _log("info", "Starting claude auth login with PTY")
+    _log("info", "Starting claude setup-token with PTY")
 
     try:
         pid, fd = pty.openpty()
@@ -190,7 +190,9 @@ async def auth_login() -> AuthLoginResponse:
         os.dup2(pid, 2)  # stderr
         if pid > 2:
             os.close(pid)
-        os.execvp("claude", ["claude", "auth", "login"])  # noqa: S606, S607
+        # Use setup-token which has an interactive "Paste code here" prompt.
+        # auth login lacks this prompt and waits for a browser callback instead.
+        os.execvp("claude", ["claude", "setup-token"])  # noqa: S606, S607
         os._exit(1)
 
     # ── Parent process ──
@@ -211,6 +213,16 @@ async def auth_login() -> AuthLoginResponse:
                 if match:
                     url = match.group(0)
                     _log("info", f"Got OAuth URL: {url[:80]}...")
+                    # Widen the scopes so the resulting credentials support RC.
+                    full_scopes = (
+                        "org%3Acreate_api_key+"
+                        "user%3Aprofile+"
+                        "user%3Ainference+"
+                        "user%3Asessions%3Aclaude_code+"
+                        "user%3Amcp_servers+"
+                        "user%3Afile_upload"
+                    )
+                    url = re.sub(r"scope=[^&]+", f"scope={full_scopes}", url)
                     return AuthLoginResponse(oauth_url=url)
     except TimeoutError:
         _log("error", f"Timed out waiting for OAuth URL. Output so far: {_pty_output[:500]}")
@@ -233,7 +245,9 @@ async def auth_callback(body: AuthCallbackRequest) -> AuthCallbackResponse:
         )
 
     code = body.code.strip()
-    _log("info", f"Submitting auth code ({len(code)} chars) to login process (pid={_pty_pid})")
+    clean_output = _ANSI_ESCAPE.sub("", _pty_output)
+    _log("info", f"Submitting auth code ({len(code)} chars) to pid={_pty_pid}")
+    _log("info", f"PTY output before code: ...{clean_output[-300:]}")
 
     try:
         os.write(_pty_master_fd, (code + "\r").encode())
@@ -251,7 +265,8 @@ async def auth_callback(body: AuthCallbackRequest) -> AuthCallbackResponse:
             _, status = await loop.run_in_executor(None, os.waitpid, _pty_pid, 0)
             exit_code = os.WEXITSTATUS(status) if os.WIFEXITED(status) else -1
     except TimeoutError:
-        _log("error", "Login process timed out after receiving code")
+        clean = _ANSI_ESCAPE.sub("", _pty_output)
+        _log("error", f"Login timed out. PTY output after code: ...{clean[-500:]}")
         import signal
 
         with contextlib.suppress(OSError):
