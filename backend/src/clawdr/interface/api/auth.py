@@ -27,8 +27,8 @@ _log_buffer: deque[dict[str, str]] = deque(maxlen=_MAX_LOG_ENTRIES)
 # Claude Code OAuth constants (from the CLI source).
 _CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
 _REDIRECT_URI = "https://platform.claude.com/oauth/code/callback"
-_AUTHORIZE_URL = "https://claude.ai/oauth/authorize"
-_TOKEN_URL = "https://claude.ai/oauth/token"  # noqa: S105
+_AUTHORIZE_URL = "https://claude.com/cai/oauth/authorize"
+_TOKEN_URL = "https://claude.com/cai/oauth/token"  # noqa: S105
 _FULL_SCOPES = (
     "org:create_api_key "
     "user:profile "
@@ -212,7 +212,10 @@ async def auth_callback(body: AuthCallbackRequest) -> AuthCallbackResponse:
     req = urllib.request.Request(  # noqa: S310
         _TOKEN_URL,
         data=token_data,
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        headers={
+            "Content-Type": "application/x-www-form-urlencoded",
+            "User-Agent": "claude-code/2.1.0",
+        },
         method="POST",
     )
 
