@@ -28,7 +28,7 @@ class LaunchError(RuntimeError):
     """Raised when the claude rc subprocess fails to start."""
 
 
-_URL_PATTERN = re.compile(r"https://claude\.ai/code/session_[a-zA-Z0-9_\-]+")
+_URL_PATTERN = re.compile(r"https://claude\.ai/code[?\S]+")
 _ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
 
 # Map of project_id -> running subprocess
@@ -91,6 +91,7 @@ async def launch_session(
     try:
         proc = await asyncio.create_subprocess_exec(
             *cmd,
+            stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
             cwd=project_path,
@@ -107,6 +108,11 @@ async def launch_session(
         raise LaunchError(msg) from exc
 
     _processes[key] = proc
+
+    # Auto-confirm the "Enable Remote Control? (y/n)" prompt.
+    if proc.stdin is not None:
+        proc.stdin.write(b"y\n")
+        await proc.stdin.drain()
 
     # Start a watcher task that reads output and manages state
     task = asyncio.create_task(_watch_process(key, proc, session_store, event_bus))
