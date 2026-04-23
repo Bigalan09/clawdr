@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import asyncio
-import contextlib
+import base64
+import hashlib
 import json
 import logging
 import os
-import pty
-import re
+import secrets
+import urllib.request
 from collections import deque
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
@@ -18,12 +20,24 @@ router = APIRouter(tags=["auth"])
 
 logger = logging.getLogger(__name__)
 
-_OAUTH_URL_PATTERN = re.compile(r"https://claude\.com/cai/oauth/authorize\S+")
-_ANSI_ESCAPE = re.compile(r"\x1b[\[\(][0-9;]*[a-zA-Z]|\x1b\][^\x07]*\x07|\r")
-
 # ── Ring-buffer log for the frontend dev console ──────────────────────
 _MAX_LOG_ENTRIES = 200
 _log_buffer: deque[dict[str, str]] = deque(maxlen=_MAX_LOG_ENTRIES)
+
+# Claude Code OAuth constants (from the CLI source).
+_CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e"
+_REDIRECT_URI = "https://platform.claude.com/oauth/code/callback"
+_AUTHORIZE_URL = "https://claude.ai/oauth/authorize"
+_TOKEN_URL = "https://claude.ai/oauth/token"  # noqa: S105
+_FULL_SCOPES = (
+    "org:create_api_key "
+    "user:profile "
+    "user:inference "
+    "user:sessions:claude_code "
+    "user:mcp_servers "
+    "user:file_upload"
+)
+_CREDENTIALS_PATH = os.path.expanduser("~/.claude/.credentials.json")
 
 
 def _log(level: str, msg: str) -> None:
@@ -123,170 +137,158 @@ async def auth_status() -> AuthStatusResponse:
     )
 
 
-# ── PTY-based login state ────────────────────────────────────────────
-_pty_master_fd: int | None = None
-_pty_pid: int | None = None
-_drain_task: asyncio.Task[None] | None = None
-_pty_output: str = ""
+# ── PKCE OAuth flow (no CLI needed) ──────────────────────────────────
+_pkce_code_verifier: str | None = None
 
 
-def _cleanup_login() -> None:
-    """Reset all login state."""
-    global _pty_master_fd, _pty_pid, _drain_task, _pty_output
-    if _drain_task and not _drain_task.done():
-        _drain_task.cancel()
-    if _pty_master_fd is not None:
-        with contextlib.suppress(OSError):
-            os.close(_pty_master_fd)
-    _pty_master_fd = None
-    _pty_pid = None
-    _drain_task = None
-    _pty_output = ""
-
-
-async def _drain_pty(fd: int) -> None:
-    """Keep reading PTY output in the background so the process doesn't block."""
-    global _pty_output
-    loop = asyncio.get_event_loop()
-    while True:
-        try:
-            data = await loop.run_in_executor(None, os.read, fd, 4096)
-            if not data:
-                break
-            text = data.decode("utf-8", errors="replace")
-            _pty_output += text
-        except OSError:
-            break
+def _generate_pkce() -> tuple[str, str]:
+    """Generate a PKCE code_verifier and code_challenge."""
+    verifier = secrets.token_urlsafe(64)[:128]
+    digest = hashlib.sha256(verifier.encode("ascii")).digest()
+    challenge = base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+    return verifier, challenge
 
 
 @router.post("/auth/login", response_model=AuthLoginResponse)
 async def auth_login() -> AuthLoginResponse:
-    """Start the OAuth login flow using a real PTY.
+    """Generate an OAuth authorization URL with PKCE.
 
-    Forks a child process with ``claude auth login`` attached to a
-    pseudo-terminal so the CLI enters interactive mode and shows the
-    "Paste code here" prompt.
+    We build the URL ourselves so we control the scopes (including RC)
+    and hold onto the ``code_verifier`` for the token exchange.
     """
-    global _pty_master_fd, _pty_pid, _drain_task, _pty_output
+    global _pkce_code_verifier
 
-    _cleanup_login()
-    _pty_output = ""
+    verifier, challenge = _generate_pkce()
+    _pkce_code_verifier = verifier
 
-    _log("info", "Starting claude setup-token with PTY")
+    state = secrets.token_urlsafe(32)
 
-    try:
-        pid, fd = pty.openpty()
-    except OSError as exc:
-        _log("error", f"Failed to open PTY: {exc}")
-        raise HTTPException(status_code=500, detail=f"PTY allocation failed: {exc}") from exc
+    params = urlencode(
+        {
+            "code": "true",
+            "client_id": _CLIENT_ID,
+            "response_type": "code",
+            "redirect_uri": _REDIRECT_URI,
+            "scope": _FULL_SCOPES,
+            "code_challenge": challenge,
+            "code_challenge_method": "S256",
+            "state": state,
+        }
+    )
+    url = f"{_AUTHORIZE_URL}?{params}"
 
-    # Set the PTY width very wide so URLs don't line-wrap.
-    import fcntl
-    import struct
-    import termios
-
-    winsize = struct.pack("HHHH", 24, 4096, 0, 0)  # rows=24, cols=4096
-    fcntl.ioctl(fd, termios.TIOCSWINSZ, winsize)
-
-    child_pid = os.fork()
-    if child_pid == 0:
-        # ── Child process ──
-        os.close(fd)  # close master in child
-        os.setsid()
-        os.dup2(pid, 0)  # stdin
-        os.dup2(pid, 1)  # stdout
-        os.dup2(pid, 2)  # stderr
-        if pid > 2:
-            os.close(pid)
-        # Use setup-token which has an interactive "Paste code here" prompt.
-        # auth login lacks this prompt and waits for a browser callback instead.
-        os.execvp("claude", ["claude", "setup-token"])  # noqa: S606, S607
-        os._exit(1)
-
-    # ── Parent process ──
-    os.close(pid)  # close slave in parent
-    _pty_master_fd = fd
-    _pty_pid = child_pid
-
-    # Start background drain so the PTY buffer doesn't fill up.
-    _drain_task = asyncio.create_task(_drain_pty(fd))
-
-    # Wait for the OAuth URL to appear in output (max 30s).
-    try:
-        async with asyncio.timeout(30):
-            while True:
-                await asyncio.sleep(0.2)
-                clean = _ANSI_ESCAPE.sub("", _pty_output)
-                match = _OAUTH_URL_PATTERN.search(clean)
-                if match:
-                    url = match.group(0)
-                    _log("info", f"Got OAuth URL ({len(url)} chars): {url[:120]}...")
-                    return AuthLoginResponse(oauth_url=url)
-    except TimeoutError:
-        _log("error", f"Timed out waiting for OAuth URL. Output so far: {_pty_output[:500]}")
-        _cleanup_login()
-        raise HTTPException(
-            status_code=500,
-            detail="Timed out waiting for OAuth URL",
-        ) from None
+    _log("info", f"Generated OAuth URL ({len(url)} chars), verifier stored")
+    return AuthLoginResponse(oauth_url=url)
 
 
 @router.post("/auth/callback", response_model=AuthCallbackResponse)
 async def auth_callback(body: AuthCallbackRequest) -> AuthCallbackResponse:
-    """Feed the OAuth code back to the waiting ``claude auth login`` process."""
-    global _pty_master_fd, _pty_pid
+    """Exchange the authorization code for tokens and store credentials."""
+    global _pkce_code_verifier
 
-    if _pty_master_fd is None or _pty_pid is None:
+    if _pkce_code_verifier is None:
         raise HTTPException(
             status_code=409,
-            detail="No login process is waiting for a code. Call POST /api/auth/login first.",
+            detail="No login flow in progress. Call POST /api/auth/login first.",
         )
 
     code = body.code.strip()
-    clean_output = _ANSI_ESCAPE.sub("", _pty_output)
-    _log("info", f"Submitting auth code ({len(code)} chars) to pid={_pty_pid}")
-    _log("info", f"PTY output before code: ...{clean_output[-300:]}")
+    verifier = _pkce_code_verifier
+    _pkce_code_verifier = None
 
-    try:
-        os.write(_pty_master_fd, (code + "\r").encode())
-    except OSError as exc:
-        _log("error", f"Failed to write code to PTY: {exc}")
-        _cleanup_login()
-        raise HTTPException(status_code=500, detail=f"Failed to send code: {exc}") from exc
+    _log("info", f"Exchanging auth code ({len(code)} chars) for tokens...")
 
-    _log("info", "Code written to PTY, waiting for process to finish...")
+    # Exchange authorization code for tokens.
+    token_data = urlencode(
+        {
+            "grant_type": "authorization_code",
+            "client_id": _CLIENT_ID,
+            "code": code,
+            "redirect_uri": _REDIRECT_URI,
+            "code_verifier": verifier,
+        }
+    ).encode()
 
-    # Wait for the child to exit.
-    try:
-        async with asyncio.timeout(30):
-            loop = asyncio.get_event_loop()
-            _, status = await loop.run_in_executor(None, os.waitpid, _pty_pid, 0)
-            exit_code = os.WEXITSTATUS(status) if os.WIFEXITED(status) else -1
-    except TimeoutError:
-        clean = _ANSI_ESCAPE.sub("", _pty_output)
-        _log("error", f"Login timed out. PTY output after code: ...{clean[-500:]}")
-        import signal
-
-        with contextlib.suppress(OSError):
-            os.kill(_pty_pid, signal.SIGKILL)
-        with contextlib.suppress(ChildProcessError, OSError):
-            await asyncio.get_event_loop().run_in_executor(None, os.waitpid, _pty_pid, 0)
-        _cleanup_login()
-        raise HTTPException(
-            status_code=500,
-            detail="Login process timed out after receiving code",
-        ) from None
-
-    _log("info", f"Login process exited with code {exit_code}. Output: {_pty_output[-500:]}")
-    _cleanup_login()
-
-    if exit_code == 0:
-        return AuthCallbackResponse(success=True, message="Authentication successful")
-
-    return AuthCallbackResponse(
-        success=False,
-        message=f"Authentication failed (exit code {exit_code})",
+    req = urllib.request.Request(  # noqa: S310
+        _TOKEN_URL,
+        data=token_data,
+        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        method="POST",
     )
+
+    try:
+        loop = asyncio.get_event_loop()
+        response_body = await asyncio.wait_for(
+            loop.run_in_executor(None, _do_token_request, req),
+            timeout=30,
+        )
+        tokens = json.loads(response_body)
+    except TimeoutError:
+        _log("error", "Token exchange timed out")
+        return AuthCallbackResponse(success=False, message="Token exchange timed out")
+    except Exception as exc:
+        _log("error", f"Token exchange failed: {exc}")
+        return AuthCallbackResponse(success=False, message=f"Token exchange failed: {exc}")
+
+    if "error" in tokens:
+        _log("error", f"OAuth error: {tokens}")
+        return AuthCallbackResponse(
+            success=False,
+            message=f"OAuth error: {tokens.get('error_description', tokens.get('error'))}",
+        )
+
+    _log("info", "Token exchange successful, writing credentials...")
+
+    # Write credentials in the format Claude Code expects on Linux.
+    credentials = {
+        "claudeAiOauth": {
+            "accessToken": tokens.get("access_token", ""),
+            "refreshToken": tokens.get("refresh_token", ""),
+            "expiresAt": _compute_expires_at(tokens.get("expires_in", 3600)),
+            "scopes": _FULL_SCOPES.split(" "),
+        }
+    }
+
+    try:
+        os.makedirs(os.path.dirname(_CREDENTIALS_PATH), exist_ok=True)
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, _write_credentials_file, json.dumps(credentials, indent=2))
+        _log("info", f"Credentials written to {_CREDENTIALS_PATH}")
+    except OSError as exc:
+        _log("error", f"Failed to write credentials: {exc}")
+        return AuthCallbackResponse(success=False, message=f"Failed to write credentials: {exc}")
+
+    return AuthCallbackResponse(success=True, message="Authentication successful")
+
+
+def _write_credentials_file(content: str) -> None:
+    """Write credentials to disk (runs in executor)."""
+    import pathlib
+
+    p = pathlib.Path(_CREDENTIALS_PATH)
+    p.write_text(content)
+    p.chmod(0o600)
+
+
+def _do_token_request(req: urllib.request.Request) -> str:
+    """Perform the token exchange HTTP request (runs in executor)."""
+    import urllib.error
+
+    try:
+        with urllib.request.urlopen(req, timeout=25) as resp:  # noqa: S310
+            result: str = resp.read().decode()
+            return result
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode() if exc.fp else ""
+        msg = f"HTTP {exc.code}: {body[:300]}"
+        raise RuntimeError(msg) from exc
+
+
+def _compute_expires_at(expires_in: int) -> int:
+    """Convert expires_in seconds to a Unix timestamp in milliseconds."""
+    import time
+
+    return int((time.time() + expires_in) * 1000)
 
 
 @router.get("/auth/logs", response_model=list[LogEntry])
