@@ -180,6 +180,14 @@ async def auth_login() -> AuthLoginResponse:
         _log("error", f"Failed to open PTY: {exc}")
         raise HTTPException(status_code=500, detail=f"PTY allocation failed: {exc}") from exc
 
+    # Set the PTY width very wide so URLs don't line-wrap.
+    import fcntl
+    import struct
+    import termios
+
+    winsize = struct.pack("HHHH", 24, 4096, 0, 0)  # rows=24, cols=4096
+    fcntl.ioctl(fd, termios.TIOCSWINSZ, winsize)
+
     child_pid = os.fork()
     if child_pid == 0:
         # ── Child process ──
@@ -212,17 +220,7 @@ async def auth_login() -> AuthLoginResponse:
                 match = _OAUTH_URL_PATTERN.search(clean)
                 if match:
                     url = match.group(0)
-                    _log("info", f"Got OAuth URL: {url[:80]}...")
-                    # Widen the scopes so the resulting credentials support RC.
-                    full_scopes = (
-                        "org%3Acreate_api_key+"
-                        "user%3Aprofile+"
-                        "user%3Ainference+"
-                        "user%3Asessions%3Aclaude_code+"
-                        "user%3Amcp_servers+"
-                        "user%3Afile_upload"
-                    )
-                    url = re.sub(r"scope=[^&]+", f"scope={full_scopes}", url)
+                    _log("info", f"Got OAuth URL ({len(url)} chars): {url[:120]}...")
                     return AuthLoginResponse(oauth_url=url)
     except TimeoutError:
         _log("error", f"Timed out waiting for OAuth URL. Output so far: {_pty_output[:500]}")
