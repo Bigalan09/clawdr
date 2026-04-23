@@ -21,6 +21,13 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        <script
+          src="https://kit.fontawesome.com/506d0b87b0.js"
+          crossOrigin="anonymous"
+          async
+        />
+      </head>
       <body className="min-h-screen bg-surface text-text-primary antialiased">
         {children}
       </body>
