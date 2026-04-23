@@ -31,6 +31,19 @@ class AuthLoginResponse(BaseModel):
     oauth_url: str
 
 
+class AuthCallbackRequest(BaseModel):
+    """Request body for POST /api/auth/callback."""
+
+    code: str
+
+
+class AuthCallbackResponse(BaseModel):
+    """Response for POST /api/auth/callback."""
+
+    success: bool
+    message: str
+
+
 async def _run_claude_command(*args: str, deadline: float = 15) -> str:
     """Run a claude CLI command and return combined stdout+stderr."""
     proc = await asyncio.create_subprocess_exec(
@@ -110,6 +123,7 @@ async def auth_login() -> AuthLoginResponse:
             "claude",
             "auth",
             "login",
+            stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
         )
@@ -141,4 +155,43 @@ async def auth_login() -> AuthLoginResponse:
     raise HTTPException(
         status_code=500,
         detail="claude auth login exited without providing an OAuth URL",
+    )
+
+
+@router.post("/auth/callback", response_model=AuthCallbackResponse)
+async def auth_callback(body: AuthCallbackRequest) -> AuthCallbackResponse:
+    """Send the OAuth code back to the waiting ``claude auth login`` process."""
+    global _login_proc
+
+    if _login_proc is None or _login_proc.returncode is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="No login process is waiting for a code. Call POST /api/auth/login first.",
+        )
+
+    assert _login_proc.stdin is not None
+    _login_proc.stdin.write((body.code.strip() + "\n").encode())
+    await _login_proc.stdin.drain()
+
+    # Wait for the process to finish (it should complete quickly after receiving the code).
+    try:
+        await asyncio.wait_for(_login_proc.wait(), timeout=30)
+    except TimeoutError:
+        _login_proc.kill()
+        await _login_proc.wait()
+        _login_proc = None
+        raise HTTPException(
+            status_code=500,
+            detail="Login process timed out after receiving code",
+        ) from None
+
+    exit_code = _login_proc.returncode
+    _login_proc = None
+
+    if exit_code == 0:
+        return AuthCallbackResponse(success=True, message="Authentication successful")
+
+    return AuthCallbackResponse(
+        success=False,
+        message=f"Authentication failed (exit code {exit_code})",
     )

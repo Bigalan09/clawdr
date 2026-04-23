@@ -151,6 +151,24 @@ export async function startAuthLogin(): Promise<AuthLoginResponse> {
   return res.json();
 }
 
+export interface AuthCallbackResponse {
+  success: boolean;
+  message: string;
+}
+
+export async function submitAuthCode(code: string): Promise<AuthCallbackResponse> {
+  const res = await fetch(`${API_BASE}/auth/callback`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ code }),
+  });
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({ detail: "Unknown error" }));
+    throw new Error(detail.detail ?? `Failed: ${res.status}`);
+  }
+  return res.json();
+}
+
 export async function removeProject(projectId: string): Promise<void> {
   const res = await fetch(`${API_BASE}/projects/${projectId}`, {
     method: "DELETE",
