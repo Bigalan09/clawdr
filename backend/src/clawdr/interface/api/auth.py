@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import re
+from urllib.parse import parse_qs, urlparse
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -14,7 +15,8 @@ router = APIRouter(tags=["auth"])
 
 logger = logging.getLogger(__name__)
 
-_URL_PATTERN = re.compile(r"https://claude\.com/cai/oauth/authorize\S+")
+_OAUTH_URL_PATTERN = re.compile(r"https://claude\.com/cai/oauth/authorize\S+")
+_ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]|\x1b\][^\x07]*\x07|\x1b[><=\[\]()][^\x1b]*")
 
 
 class AuthStatusResponse(BaseModel):
@@ -98,31 +100,42 @@ async def auth_status() -> AuthStatusResponse:
     )
 
 
-# Background login process kept alive until OAuth completes.
+# State for the two-step login flow.
 _login_proc: asyncio.subprocess.Process | None = None
+_login_code_verifier: str | None = None
+
+
+def _extract_code_verifier(oauth_url: str) -> str | None:
+    """Extract code_challenge from the OAuth URL for PKCE tracking."""
+    parsed = urlparse(oauth_url)
+    params = parse_qs(parsed.query)
+    challenges = params.get("code_challenge", [])
+    return challenges[0] if challenges else None
 
 
 @router.post("/auth/login", response_model=AuthLoginResponse)
 async def auth_login() -> AuthLoginResponse:
     """Start the OAuth login flow and return the authorization URL.
 
-    Spawns ``claude auth login``, reads its output line-by-line until
-    the OAuth URL appears, then returns it.  The process stays alive in
-    the background waiting for the user to complete the OAuth flow.
+    Uses ``script`` to wrap ``claude auth login`` in a PTY so that the
+    CLI enters its interactive code-paste mode.  The process is kept
+    alive so that ``POST /api/auth/callback`` can feed the code back.
     """
-    global _login_proc
+    global _login_proc, _login_code_verifier
 
     # Kill any lingering login process from a previous attempt.
     if _login_proc is not None and _login_proc.returncode is None:
         _login_proc.kill()
         await _login_proc.wait()
         _login_proc = None
+        _login_code_verifier = None
 
     try:
         proc = await asyncio.create_subprocess_exec(
-            "claude",
-            "auth",
-            "login",
+            "script",
+            "-qc",
+            "claude auth login",
+            "/dev/null",
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,
@@ -133,14 +146,19 @@ async def auth_login() -> AuthLoginResponse:
     _login_proc = proc
     assert proc.stdout is not None
 
-    # Read output line-by-line until we find the OAuth URL (max 15s).
+    # Read output until we find the OAuth URL (max 30s, setup-token is slow).
+    collected = ""
     try:
-        async with asyncio.timeout(15):
+        async with asyncio.timeout(30):
             async for raw_line in proc.stdout:
                 line = raw_line.decode("utf-8", errors="replace")
-                match = _URL_PATTERN.search(line)
+                collected += line
+                clean = _ANSI_ESCAPE.sub("", collected)
+                match = _OAUTH_URL_PATTERN.search(clean)
                 if match:
-                    return AuthLoginResponse(oauth_url=match.group(0))
+                    url = match.group(0)
+                    _login_code_verifier = _extract_code_verifier(url)
+                    return AuthLoginResponse(oauth_url=url)
     except TimeoutError:
         proc.kill()
         await proc.wait()
@@ -150,7 +168,6 @@ async def auth_login() -> AuthLoginResponse:
             detail="Timed out waiting for OAuth URL",
         ) from None
 
-    # Process exited without printing a URL.
     _login_proc = None
     raise HTTPException(
         status_code=500,
@@ -160,8 +177,8 @@ async def auth_login() -> AuthLoginResponse:
 
 @router.post("/auth/callback", response_model=AuthCallbackResponse)
 async def auth_callback(body: AuthCallbackRequest) -> AuthCallbackResponse:
-    """Send the OAuth code back to the waiting ``claude auth login`` process."""
-    global _login_proc
+    """Feed the OAuth code back to the waiting ``claude auth login`` process."""
+    global _login_proc, _login_code_verifier
 
     if _login_proc is None or _login_proc.returncode is not None:
         raise HTTPException(
@@ -170,16 +187,21 @@ async def auth_callback(body: AuthCallbackRequest) -> AuthCallbackResponse:
         )
 
     assert _login_proc.stdin is not None
-    _login_proc.stdin.write((body.code.strip() + "\n").encode())
+
+    # The process is in a PTY waiting at the "Paste code here" prompt.
+    # Send the code followed by a newline.
+    code_bytes = (body.code.strip() + "\n").encode()
+    _login_proc.stdin.write(code_bytes)
     await _login_proc.stdin.drain()
 
-    # Wait for the process to finish (it should complete quickly after receiving the code).
+    # Wait for the process to finish.
     try:
         await asyncio.wait_for(_login_proc.wait(), timeout=30)
     except TimeoutError:
         _login_proc.kill()
         await _login_proc.wait()
         _login_proc = None
+        _login_code_verifier = None
         raise HTTPException(
             status_code=500,
             detail="Login process timed out after receiving code",
@@ -187,6 +209,7 @@ async def auth_callback(body: AuthCallbackRequest) -> AuthCallbackResponse:
 
     exit_code = _login_proc.returncode
     _login_proc = None
+    _login_code_verifier = None
 
     if exit_code == 0:
         return AuthCallbackResponse(success=True, message="Authentication successful")
