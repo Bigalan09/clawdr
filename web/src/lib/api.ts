@@ -132,6 +132,19 @@ export interface AuthStatus {
   email: string | null;
 }
 
+export interface LogEntry {
+  ts: string;
+  level: string;
+  msg: string;
+}
+
+export async function fetchLogs(since: string = ""): Promise<LogEntry[]> {
+  const params = since ? `?since=${encodeURIComponent(since)}` : "";
+  const res = await fetch(`${API_BASE}/logs${params}`);
+  if (!res.ok) return [];
+  return res.json();
+}
+
 export async function fetchAuthStatus(): Promise<AuthStatus> {
   const res = await fetch(`${API_BASE}/auth/status`);
   if (!res.ok) throw new Error(`Failed to check auth status: ${res.status}`);
