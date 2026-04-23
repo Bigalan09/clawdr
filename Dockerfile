@@ -32,6 +32,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
     gnupg \
+    git \
     && mkdir -p /etc/apt/keyrings \
     && curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
        | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg \
@@ -63,6 +64,8 @@ VOLUME ["/root/.claude"]
 
 ENV BACKEND_PORT=8000
 ENV FRONTEND_PORT=3000
+
+EXPOSE 8000 3000 10200 10300
 
 WORKDIR /app
 CMD ["supervisord", "-n", "-c", "/etc/supervisor/conf.d/clawdr.conf"]

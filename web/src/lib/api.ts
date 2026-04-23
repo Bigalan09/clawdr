@@ -113,10 +113,11 @@ export interface BrowseResponse {
 }
 
 export async function browsePath(
-  path: string = "~",
+  path: string = "",
 ): Promise<BrowseResponse> {
+  const params = path ? `?path=${encodeURIComponent(path)}` : "";
   const res = await fetch(
-    `${API_BASE}/browse?path=${encodeURIComponent(path)}`,
+    `${API_BASE}/browse${params}`,
   );
   if (!res.ok) {
     const detail = await res.json().catch(() => ({ detail: "Unknown error" }));
@@ -124,6 +125,32 @@ export async function browsePath(
   }
   return res.json();
 }
+
+export interface AuthStatus {
+  logged_in: boolean;
+  auth_method: string;
+  email: string | null;
+}
+
+export interface LogEntry {
+  ts: string;
+  level: string;
+  msg: string;
+}
+
+export async function fetchLogs(since: string = ""): Promise<LogEntry[]> {
+  const params = since ? `?since=${encodeURIComponent(since)}` : "";
+  const res = await fetch(`${API_BASE}/logs${params}`);
+  if (!res.ok) return [];
+  return res.json();
+}
+
+export async function fetchAuthStatus(): Promise<AuthStatus> {
+  const res = await fetch(`${API_BASE}/auth/status`);
+  if (!res.ok) throw new Error(`Failed to check auth status: ${res.status}`);
+  return res.json();
+}
+
 
 export async function removeProject(projectId: string): Promise<void> {
   const res = await fetch(`${API_BASE}/projects/${projectId}`, {

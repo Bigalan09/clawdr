@@ -91,7 +91,7 @@ async def start_session(
         InvalidStateTransitionError,
         ProjectId,
     )
-    from clawdr.infrastructure.session_launcher import launch_session
+    from clawdr.infrastructure.session_launcher import LaunchError, launch_session
 
     projects = await _repo().list_all()
     project = next((p for p in projects if p.id.value == project_id), None)
@@ -125,14 +125,17 @@ async def start_session(
     )
 
     # Launch the actual claude rc process
-    await launch_session(
-        project_id=ProjectId(project_id),
-        project_path=str(project.path),
-        project_name=project.name,
-        permission_mode=perm,
-        session_store=_store(),
-        event_bus=_bus(),
-    )
+    try:
+        await launch_session(
+            project_id=ProjectId(project_id),
+            project_path=str(project.path),
+            project_name=project.name,
+            permission_mode=perm,
+            session_store=_store(),
+            event_bus=_bus(),
+        )
+    except LaunchError as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to start session: {exc}") from exc
 
     return SessionActionResponse(
         project_id=project_id,

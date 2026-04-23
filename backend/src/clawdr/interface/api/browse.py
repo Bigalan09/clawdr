@@ -2,12 +2,25 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 router = APIRouter(tags=["browse"])
+
+
+def _browse_root() -> Path:
+    """Return the configured browse root directory.
+
+    Set ``CLAWDR_BROWSE_ROOT`` to constrain browsing to a mount point
+    (e.g. ``/host-home`` inside Docker).  Defaults to the user home.
+    """
+    env = os.environ.get("CLAWDR_BROWSE_ROOT", "")
+    if env:
+        return Path(env).resolve()
+    return Path.home()
 
 
 class DirEntry(BaseModel):
@@ -27,8 +40,13 @@ class BrowseResponse(BaseModel):
 
 
 def _list_dirs(path: str) -> BrowseResponse:
-    """Synchronous directory listing."""
+    """Synchronous directory listing, constrained to the browse root."""
+    root = _browse_root()
     target = Path(path).expanduser().resolve()
+
+    # Prevent navigation above the browse root.
+    if not (target == root or root in target.parents):
+        target = root
 
     if not target.exists():
         msg = f"Path not found: {target}"
@@ -37,7 +55,11 @@ def _list_dirs(path: str) -> BrowseResponse:
         msg = f"Not a directory: {target}"
         raise NotADirectoryError(msg)
 
-    parent = str(target.parent) if target.parent != target else None
+    # Only offer parent navigation when above the root.
+    if target != root and target.parent != target:
+        parent: str | None = str(target.parent)
+    else:
+        parent = None
 
     entries: list[DirEntry] = []
     for child in sorted(target.iterdir()):
@@ -50,8 +72,14 @@ def _list_dirs(path: str) -> BrowseResponse:
 
 
 @router.get("/browse", response_model=BrowseResponse)
-async def browse_directory(path: str = "~") -> BrowseResponse:
-    """List directories at the given path."""
+async def browse_directory(path: str = "") -> BrowseResponse:
+    """List directories at the given path.
+
+    When *path* is empty the browse root is used (``CLAWDR_BROWSE_ROOT``
+    env var, falling back to ``~``).
+    """
+    if not path:
+        path = str(_browse_root())
     try:
         return _list_dirs(path)
     except FileNotFoundError as exc:
