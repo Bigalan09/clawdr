@@ -39,6 +39,28 @@ class BrowseResponse(BaseModel):
     entries: list[DirEntry]
 
 
+class MkdirRequest(BaseModel):
+    """Request body for POST /api/browse/mkdir."""
+
+    parent: str
+    name: str
+
+
+def _validate_new_dir_name(name: str) -> str:
+    """Return *name* if it is a safe single path segment, else raise ValueError."""
+    cleaned = name.strip()
+    if not cleaned:
+        msg = "Folder name is required"
+        raise ValueError(msg)
+    if cleaned.startswith("."):
+        msg = "Folder name cannot start with '.'"
+        raise ValueError(msg)
+    if "/" in cleaned or "\\" in cleaned or cleaned in {".", ".."}:
+        msg = "Folder name cannot contain path separators"
+        raise ValueError(msg)
+    return cleaned
+
+
 def _list_dirs(path: str) -> BrowseResponse:
     """Synchronous directory listing, constrained to the browse root."""
     root = _browse_root()
@@ -88,3 +110,48 @@ async def browse_directory(path: str = "") -> BrowseResponse:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except PermissionError as exc:
         raise HTTPException(status_code=403, detail="Permission denied") from exc
+
+
+def _create_dir(parent_path: str, name: str) -> BrowseResponse:
+    """Synchronous directory creation, constrained to the browse root.
+
+    Returns the refreshed listing of *parent_path* on success.
+    """
+    clean_name = _validate_new_dir_name(name)
+    root = _browse_root()
+    parent = Path(parent_path).expanduser().resolve()
+    if not (parent == root or root in parent.parents):
+        msg = "Parent is outside browse root"
+        raise ValueError(msg)
+    if not parent.exists() or not parent.is_dir():
+        msg = f"Parent not found: {parent}"
+        raise FileNotFoundError(msg)
+
+    target = parent / clean_name
+    if target.exists():
+        msg = f"Already exists: {clean_name}"
+        raise FileExistsError(msg)
+
+    target.mkdir(parents=False, exist_ok=False)
+    return _list_dirs(str(parent))
+
+
+@router.post("/browse/mkdir", response_model=BrowseResponse)
+async def create_directory(req: MkdirRequest) -> BrowseResponse:
+    """Create a new directory under *parent* and return the refreshed listing.
+
+    *name* must be a single path segment (no separators, no leading dot).
+    *parent* must resolve to a directory inside the browse root.
+    """
+    try:
+        return _create_dir(req.parent, req.name)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except FileExistsError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail="Permission denied") from exc
+    except OSError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc

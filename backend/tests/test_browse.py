@@ -116,3 +116,72 @@ def test_browse_file_path_returns_400(tmp_path: Path) -> None:
     with patch("clawdr.interface.api.browse._browse_root", return_value=tmp_path):
         resp = client.get("/api/browse", params={"path": str(f)})
     assert resp.status_code == 400
+
+
+def test_mkdir_creates_directory_and_returns_listing(tmp_path: Path) -> None:
+    """POST /browse/mkdir creates a folder and returns the parent listing."""
+    with patch("clawdr.interface.api.browse._browse_root", return_value=tmp_path):
+        resp = client.post(
+            "/api/browse/mkdir",
+            json={"parent": str(tmp_path), "name": "new-project"},
+        )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["current"] == str(tmp_path)
+    assert any(e["name"] == "new-project" for e in data["entries"])
+    assert (tmp_path / "new-project").is_dir()
+
+
+def test_mkdir_rejects_existing_directory(tmp_path: Path) -> None:
+    """Creating a directory that already exists returns 409."""
+    (tmp_path / "exists").mkdir()
+    with patch("clawdr.interface.api.browse._browse_root", return_value=tmp_path):
+        resp = client.post(
+            "/api/browse/mkdir",
+            json={"parent": str(tmp_path), "name": "exists"},
+        )
+    assert resp.status_code == 409
+
+
+def test_mkdir_rejects_path_separators(tmp_path: Path) -> None:
+    """Names with '/' should be rejected to prevent nested creation."""
+    with patch("clawdr.interface.api.browse._browse_root", return_value=tmp_path):
+        resp = client.post(
+            "/api/browse/mkdir",
+            json={"parent": str(tmp_path), "name": "a/b"},
+        )
+    assert resp.status_code == 400
+    assert not (tmp_path / "a").exists()
+
+
+def test_mkdir_rejects_dotfiles(tmp_path: Path) -> None:
+    """Names starting with '.' should be rejected (mirrors browse hide rule)."""
+    with patch("clawdr.interface.api.browse._browse_root", return_value=tmp_path):
+        resp = client.post(
+            "/api/browse/mkdir",
+            json={"parent": str(tmp_path), "name": ".hidden"},
+        )
+    assert resp.status_code == 400
+
+
+def test_mkdir_rejects_empty_name(tmp_path: Path) -> None:
+    """Whitespace-only names are rejected."""
+    with patch("clawdr.interface.api.browse._browse_root", return_value=tmp_path):
+        resp = client.post(
+            "/api/browse/mkdir",
+            json={"parent": str(tmp_path), "name": "   "},
+        )
+    assert resp.status_code == 400
+
+
+def test_mkdir_rejects_parent_above_root(tmp_path: Path) -> None:
+    """Creating in a parent outside the browse root is rejected."""
+    root = tmp_path / "root"
+    root.mkdir()
+    with patch("clawdr.interface.api.browse._browse_root", return_value=root):
+        resp = client.post(
+            "/api/browse/mkdir",
+            json={"parent": str(tmp_path), "name": "evil"},
+        )
+    assert resp.status_code == 400
+    assert not (tmp_path / "evil").exists()
