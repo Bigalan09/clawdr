@@ -32,7 +32,7 @@ test.describe("Folder Picker", () => {
 
     // If there are directory entries, click the first one to navigate
     const entries = page.locator(
-      ".max-h-48 button:not(:has-text('..'))",
+      ".max-h-64 button:not(:has-text('Up one level'))",
     );
     const count = await entries.count();
     if (count > 0) {
@@ -45,7 +45,7 @@ test.describe("Folder Picker", () => {
       );
 
       // Parent (..) should now be visible
-      await expect(page.getByText("..")).toBeVisible();
+      await expect(page.getByText("Up one level")).toBeVisible();
     }
   });
 
@@ -57,12 +57,12 @@ test.describe("Folder Picker", () => {
 
     // Navigate into a subdirectory first
     const entries = page.locator(
-      ".max-h-48 button:not(:has-text('..'))",
+      ".max-h-64 button:not(:has-text('Up one level'))",
     );
     const count = await entries.count();
     if (count > 0) {
       await entries.first().click();
-      await expect(page.getByText("..")).toBeVisible();
+      await expect(page.getByText("Up one level")).toBeVisible();
 
       // Get the path after navigating down
       const deepPath = await page
@@ -71,7 +71,7 @@ test.describe("Folder Picker", () => {
         .textContent();
 
       // Navigate back up
-      await page.getByText("..").click();
+      await page.getByText("Up one level").click();
 
       // Path should change back
       await expect(page.locator(".font-mono.text-xs").first()).not.toHaveText(
@@ -119,7 +119,7 @@ test.describe("Folder Picker", () => {
 
     // At the browse root, there should be no ".." button
     // (the root has no parent link)
-    const parentButton = page.locator(".max-h-48 button:has-text('..')");
+    const parentButton = page.locator(".max-h-64 button:has-text('Up one level')");
     await expect(parentButton).not.toBeVisible();
   });
 });

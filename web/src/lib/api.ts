@@ -126,6 +126,22 @@ export async function browsePath(
   return res.json();
 }
 
+export async function createDir(
+  parent: string,
+  name: string,
+): Promise<BrowseResponse> {
+  const res = await fetch(`${API_BASE}/browse/mkdir`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ parent, name }),
+  });
+  if (!res.ok) {
+    const detail = await res.json().catch(() => ({ detail: "Unknown error" }));
+    throw new Error(detail.detail ?? `Failed: ${res.status}`);
+  }
+  return res.json();
+}
+
 export interface AuthStatus {
   logged_in: boolean;
   auth_method: string;

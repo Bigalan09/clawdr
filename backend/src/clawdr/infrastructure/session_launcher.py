@@ -109,10 +109,11 @@ async def launch_session(
 
     _processes[key] = proc
 
-    # Auto-confirm the "Enable Remote Control? (y/n)" prompt.
+    # Auto-confirm the "Enable Remote Control? (y/n)" prompt, then close stdin.
     if proc.stdin is not None:
         proc.stdin.write(b"y\n")
         await proc.stdin.drain()
+        proc.stdin.close()
 
     # Start a watcher task that reads output and manages state
     task = asyncio.create_task(_watch_process(key, proc, session_store, event_bus))

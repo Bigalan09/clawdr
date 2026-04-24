@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(uv run *)",
+      "Bash(python3 -c \"import sys; print\\(sys.version\\)\")",
+      "Bash(python3 -m pip install uv)",
+      "Bash(uv sync *)",
+      "Bash(node_modules/.bin/tsc --noEmit)"
+    ]
+  }
+}
